@@ -116,6 +116,18 @@ class RGBArrayAsObservationWrapper(dm_env.Environment):
 			return frame
 		else:
 			self._env.render()
+	
+	def render_depth(self, offscreen=True, width=256, height=256):
+		assert offscreen, "Only offscreen rendering is supported"
+		frame, depth_unscaled = self._env.sim.render(width=width, height=height, mode='offscreen', camera_name=self.camera_name, depth=True)
+		frame = cv2.resize(frame, (width,height))
+		extent = self._env.sim.model.stat.extent
+		near = self._env.sim.model.vis.map.znear * extent
+		far = self._env.sim.model.vis.map.zfar * extent
+		depth = near / (1 - depth_unscaled * (1 - near / far))
+		depth = cv2.resize(depth, (width,height))
+		return depth
+
 
 	def get_frame(self):
 		frame = self._env.render(offscreen=True, camera_name=self.camera_name)

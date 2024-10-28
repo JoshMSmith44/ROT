@@ -5,7 +5,7 @@ defaults:
   - override hydra/launcher: submitit_local
 
 # Root Dir
-root_dir: '/path/to/dir/ROT'
+root_dir: '/home/josh/PAL/ROT/'
 
 # replay buffer
 replay_buffer_size: 150000

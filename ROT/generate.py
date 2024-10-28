@@ -15,6 +15,7 @@ import utils
 from logger import Logger
 from video import TrainVideoRecorder, VideoRecorder
 import pickle
+import cv2
 
 torch.backends.cudnn.benchmark = True
 warnings.filterwarnings('ignore', category=DeprecationWarning)
@@ -51,6 +52,7 @@ class Workspace:
 			self.work_dir if self.cfg.save_video else None)
 		self.train_video_recorder = TrainVideoRecorder(
 			self.work_dir if self.cfg.save_train_video else None)
+		
 
 	@property
 	def global_step(self):
@@ -63,6 +65,10 @@ class Workspace:
 	@property
 	def global_frame(self):
 		return self.global_step * self.cfg.action_repeat
+	
+	def get_depth(self, env):
+		depth = env._env._env._env.render_depth()
+		return depth
 
 	def generate_eval(self):
 		step, episode, total_reward = 0, 0, 0
@@ -71,27 +77,34 @@ class Workspace:
 		states_list = list()
 		actions_list = list()
 		rewards_list = list()
+		depths_list = list()
 		save_every = 1
-		while generate_until_episode(episode):
+		num_success = 0
+		while num_success < self.cfg.num_demos:#generate_until_episode(episode):
 			observations = list()
 			states = list()
 			actions = list()
 			rewards = list()
+			depths = list()
 			episode_reward = 0
 			i = 0
 			time_step = self.eval_env.reset()
+			depth = self.get_depth(self.eval_env)
 			self.video_recorder.init(self.eval_env)
+			goal_achieved = False
 			while not time_step.last():
 				if i % save_every == 0:
 					observations.append(time_step.observation['pixels'])
 					states.append(time_step.observation['features'])
 					rewards.append(time_step.reward)
+					depths.append(depth)
 				with torch.no_grad(), utils.eval_mode(self.agent):
 					action = self.agent.act(
 						time_step.observation['pixels'],
 						self.global_step,
 						eval_mode=True)
 				time_step = self.eval_env.step(action)
+				depth = self.get_depth(self.eval_env)
 				if i % save_every == 0:
 					actions.append(time_step.action)
 					self.video_recorder.record(self.eval_env)
@@ -99,31 +112,40 @@ class Workspace:
 				episode_reward += time_step.reward
 				step += 1
 				i = i + 1
-			print(episode, episode_reward)
-			if episode_reward > 100:
+				if time_step.observation['goal_achieved'] > 0.5:
+					goal_achieved = True
+					break
+			print(episode, episode_reward, goal_achieved)
+			if goal_achieved:#episode_reward > 100:
+			#if episode_reward > 100:
 				episode += 1
 				self.video_recorder.save(f'{episode}_eval.mp4')
 				rewards_list.append(np.array(rewards))
 				observations_list.append(np.stack(observations, 0))
 				states_list.append(np.stack(states, 0))
 				actions_list.append(np.stack(actions, 0))
+				depths_list.append(np.stack(depths, 0))
+				num_success += 1
 				
 		# Make np arrays
-		observations_list = np.array(observations_list)
-		states_list = np.array(states_list)
-		actions_list = np.array(actions_list)
-		rewards_list = np.array(rewards_list)
+		for i in range(len(observations_list)):
+			print("write i")
+			observations_save = observations_list[i][None, :]
+			states_save = states_list[i][None, :]
+			actions_save = actions_list[i][None, :]
+			rewards_save = rewards_list[i][None, :]
+			depths_save = depths_list[i][None, :]
 
-		# Save demo in pickle file
-		save_dir = Path(self.work_dir)
-		save_dir.mkdir(parents=True, exist_ok=True)
-		snapshot_path = save_dir / 'expert_demos.pkl'
-		payload = [
-			observations_list, states_list, actions_list, rewards_list
-		]
+			# Save demo in pickle file
+			save_dir = Path(self.work_dir)
+			save_dir.mkdir(parents=True, exist_ok=True)
+			snapshot_path = save_dir / f'expert_demos_{i}.pkl'
+			payload = [
+				observations_save, states_save, actions_save, rewards_save, depths_save
+			]
 
-		with open(str(snapshot_path), 'wb') as f:
-			pickle.dump(payload, f)
+			with open(str(snapshot_path), 'wb') as f:
+				pickle.dump(payload, f)
 
 	def load_snapshot(self, snapshot):
 		with snapshot.open('rb') as f:

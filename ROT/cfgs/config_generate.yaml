@@ -16,7 +16,7 @@ save_video: true
 save_train_video: false
 use_tb: true
 # experiment
-obs_type: 'pixels'
+obs_type: 'features'
 experiment: generate_${suite.name}_${task_name}_seed_${seed}
 bc_weight_type: 'qfilter'
 
@@ -24,7 +24,7 @@ bc_weight_type: 'qfilter'
 num_demos: 10
 
 # Load weights
-weight: '/path/to/dir/weights/${suite.name}_${obs_type}/${task_name}/drqv2.pt'
+weight: '/home/josh/PAL/ROT/ROT/weights/${suite.name}_${obs_type}/${task_name}/bc.pt'
 
 hydra:
   run:
